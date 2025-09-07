@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>학생회 근무표 생성기 (Advanced AI)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .highlight { background-color: #fef9c3; font-weight: 700; border: 2px solid #facc15; }
+        .tab-btn.active { border-color: #3b82f6; color: #2563eb; font-weight: 700; }
+        .tab-btn:not(.active) { border-color: transparent; color: #6b7280; }
+        .drop-zone { border: 2px dashed #d1d5db; transition: all 0.2s ease-in-out; }
+        .drop-zone.dragover { border-color: #3b82f6; background-color: #eff6ff; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">학생회 근무표 생성기 (Advanced AI)</h1>
+            <p class="text-gray-600 mt-2">에브리타임 시간표 이미지를 업로드하여 자동으로 근무표를 생성하세요.</p>
+        </header>
+
+        <!-- Tab Navigation -->
+        <div class="mb-6">
+            <div class="border-b border-gray-200">
+                <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                    <button id="tab-management-btn" class="tab-btn active whitespace-nowrap py-4 px-1 border-b-2 text-sm"><i class="fas fa-users-cog mr-2"></i>1. 부원 및 시간표 관리</button>
+                    <button id="tab-schedule-btn" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 text-sm"><i class="fas fa-calendar-alt mr-2"></i>2. 근무표 보기</button>
+                </nav>
+            </div>
+        </div>
+        
+        <!-- Tab Content Panels -->
+        <div id="tab-content-management">
+            <section id="management-section" class="bg-white p-6 rounded-2xl shadow-lg">
+                <div class="flex justify-between items-center mb-4 border-b pb-3">
+                    <h2 class="text-2xl font-bold text-gray-700">부원 관리</h2>
+                </div>
+                <div id="member-list" class="space-y-6"></div>
+                <div class="mt-6">
+                    <div class="flex gap-4">
+                        <input type="text" id="new-member-name" placeholder="새 부원 이름" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <button id="add-member-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 shadow-md">부원 추가</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="tab-content-schedule" class="hidden">
+            <main class="bg-white p-6 rounded-2xl shadow-lg">
+                 <div class="flex flex-col md:flex-row gap-4 mb-6 pb-6 border-b items-center">
+                    <div class="flex-grow">
+                        <h2 class="text-2xl font-bold text-gray-700">근무 시간표</h2>
+                        <p class="text-xs text-gray-500 mt-2">
+                           ✨ <strong>최적해 탐색 AI:</strong> 여러 경우의 수를 탐색하여 연속 근무가 최대화된 최적의 근무표를 제안합니다.<br>
+                           🎨 <strong>노란색 배경</strong>은 해당 시간의 메인 근무자입니다.
+                        </p>
+                    </div>
+                    <button id="generate-schedule" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 shadow-md">🔄 근무표 생성</button>
+                </div>
+                <div id="schedule-output" class="overflow-x-auto">
+                     <p class="text-center text-gray-500 py-8">먼저 '부원 관리' 탭에서 시간표를 입력하고 '근무표 생성' 버튼을 눌러주세요.</p>
+                </div>
+                <div id="stats-output" class="mt-6"></div>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    <div id="confirmation-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm text-center">
+            <h3 class="text-lg font-bold text-gray-800 mb-2">삭제 확인</h3>
+            <p id="modal-text" class="text-gray-600 mb-6">정말로 삭제하시겠습니까?</p>
+            <div class="flex justify-center gap-4">
+                <button id="modal-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg">취소</button>
+                <button id="modal-confirm-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg">삭제</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- SCRIPT SETUP ---
+        const STORAGE_KEY = 'studentScheduleData_v13_optimized';
+        const workHours = [10, 11, 13, 14, 15, 16]; 
+        const days = ['월', '화', '수', '목', '금'];
+        let studentData = [];
+        let actionToConfirm = null;
+        const BACKEND_URL = 'http://127.0.0.1:5000';
+
+        // --- ALL FUNCTION DEFINITIONS ---
+
+        function loadData() {
+            try {
+                const savedData = localStorage.getItem(STORAGE_KEY);
+                studentData = savedData ? JSON.parse(savedData) : [];
+            } catch (e) { console.error("localStorage 데이터 파싱 오류:", e); studentData = []; }
+        }
+
+        function saveData() { 
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(studentData));
+        }
+
+        function renderMemberManagementUI() {
+            const memberListDiv = document.getElementById('member-list');
+            memberListDiv.innerHTML = studentData.length === 0 ? '<p class="text-center text-gray-500 py-4">부원을 추가해주세요.</p>' : '';
+            
+            studentData.forEach((member, memberIndex) => {
+                const scheduleHTML = member.schedule.map((classInfo, classIndex) => `<div class="flex items-center justify-between bg-white p-2 rounded text-sm"><span>${classInfo.day}요일 / ${classInfo.start}:00 ~ ${classInfo.end}:00</span><button class="delete-class-btn text-red-500 hover:text-red-700 font-bold" data-class-index="${classIndex}">&times;</button></div>`).join('');
+                const memberCardHTML = `<div class="p-4 border rounded-lg bg-gray-50 member-card" data-member-index="${memberIndex}"><div class="flex justify-between items-center mb-3"><h3 class="text-lg font-bold text-gray-800">${member.name}</h3><button class="delete-member-btn bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-1 px-3 rounded-full">부원 삭제</button></div><div class="uploader-section mb-4"><div class="drop-zone p-6 text-center rounded-lg cursor-pointer"><i class="fas fa-cloud-upload-alt text-3xl text-gray-400"></i><p class="mt-2 text-sm text-gray-600">AI로 시간표 채우기 (이미지 업로드)</p><input type="file" class="hidden file-input" accept="image/*"></div><div class="analysis-status mt-2 text-center"></div></div><div class="schedule-editor-section border-t pt-4"><h4 class="text-md font-semibold mb-2 text-gray-600">시간표 편집</h4><div class="schedule-list space-y-2 mb-3">${scheduleHTML || '<p class="text-xs text-gray-500">강의 시간을 추가하거나, AI로 채워주세요.</p>'}</div><div class="flex gap-2 items-center mt-2 add-class-form"><select class="day-select p-2 border rounded-md text-sm flex-1 bg-white">${days.map(d => `<option value="${d}">${d}</option>`).join('')}</select><select class="start-time-select p-2 border rounded-md text-sm flex-1 bg-white">${Array.from({length: 12}, (_, i) => i + 9).map(h => `<option value="${h}">${h}:00</option>`).join('')}</select><select class="end-time-select p-2 border rounded-md text-sm flex-1 bg-white">${Array.from({length: 12}, (_, i) => i + 10).map(h => `<option value="${h}">${h}:00</option>`).join('')}</select><button class="add-class-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-lg text-sm">+</button></div></div></div>`;
+                memberListDiv.insertAdjacentHTML('beforeend', memberCardHTML);
+            });
+        }
+        
+        async function analyzeImageWithGemini(file, memberIndex) {
+            const memberCard = document.querySelector(`.member-card[data-member-index="${memberIndex}"]`);
+            const statusDiv = memberCard.querySelector('.analysis-status');
+            statusDiv.innerHTML = '<div class="flex items-center justify-center gap-2 text-gray-600"><div class="loader"></div><span>AI 서버와 통신 중입니다...</span></div>';
+
+            const toBase64 = file => new Promise((resolve, reject) => {
+                const reader = new FileReader(); reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = error => reject(error);
+            });
+
+            try {
+                const base64Data = await toBase64(file);
+                
+                const response = await fetch(`${BACKEND_URL}/analyze-image`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_data: base64Data, mime_type: file.type })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || `서버 오류: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                let jsonString = result.candidates[0].content.parts[0].text;
+                jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
+                const parsedSchedule = JSON.parse(jsonString);
+                const processedSchedule = parsedSchedule.map(item => ({ day: item.day, start: Math.floor(item.start), end: Math.ceil(item.end) }));
+                
+                studentData[memberIndex].schedule = processedSchedule;
+                saveData();
+                renderMemberManagementUI();
+
+            } catch (error) {
+                console.error("AI 분석 실패:", error);
+                statusDiv.innerHTML = `<p class="text-center text-red-500">AI 분석 실패: ${error.message}</p>`;
+            }
+        }
+        
+        function renderScheduleTable(scheduleData, workCount) {
+            const outputDiv = document.getElementById('schedule-output'); const statsDiv = document.getElementById('stats-output');
+            if (!scheduleData) { outputDiv.innerHTML = '<p class="text-center text-gray-500 py-8">근무 가능한 인원이 없습니다. 시간표를 확인해주세요.</p>'; statsDiv.innerHTML = ''; return; }
+            outputDiv.innerHTML = `<table class="min-w-full border-collapse text-center table-fixed"><thead><tr class="bg-gray-100"><th class="p-3 border font-semibold text-gray-700 w-28">시간</th>${days.map(day => `<th class="p-3 border font-semibold text-gray-700">${day}요일</th>`).join('')}</tr></thead><tbody>${workHours.map(hour => `<tr class="border-b hover:bg-gray-50"><td class="p-3 border font-medium bg-gray-50">${hour}:00-${hour + 1}:00</td>${days.map(day => { const slot = scheduleData[day][hour]; const cellContent = (slot && slot.available.length > 0) ? `<div class="flex flex-wrap justify-center items-center gap-1 p-1">${slot.available.map(name => `<span class="text-sm px-2 py-1 rounded-md transition-all duration-200 ${name === slot.mainWorker ? 'highlight' : 'bg-gray-100 text-gray-600'}">${name}</span>`).join('')}</div>` : '-'; return `<td class="p-2 border min-h-[90px] align-top ${cellContent === '-' ? 'text-gray-400' : ''}">${cellContent}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+            statsDiv.innerHTML = `<h3 class="text-xl font-bold text-gray-700 mb-3">주간 근무 통계</h3><div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">${Object.entries(workCount).sort((a,b) => b[1] - a[1]).map(([name, count]) => `<div class="p-3 bg-gray-50 rounded-lg border"><p class="font-bold text-gray-800">${name}</p><p class="text-blue-600 font-semibold">${count} 시간</p></div>`).join('')}</div>`;
+        }
+
+        function showConfirmationModal(text, onConfirm) {
+            const modal = document.getElementById('confirmation-modal');
+            document.getElementById('modal-text').textContent = text;
+            actionToConfirm = onConfirm;
+            modal.classList.remove('hidden');
+        }
+        function hideConfirmationModal() {
+            const modal = document.getElementById('confirmation-modal');
+            actionToConfirm = null;
+            modal.classList.add('hidden');
+        }
+        function switchTab(targetTab) {
+            document.getElementById('tab-content-management').classList.toggle('hidden', targetTab !== 'management');
+            document.getElementById('tab-content-schedule').classList.toggle('hidden', targetTab === 'management');
+            document.getElementById('tab-management-btn').classList.toggle('active', targetTab === 'management');
+            document.getElementById('tab-schedule-btn').classList.toggle('active', targetTab !== 'management');
+        }
+
+        function calculateScheduleScore(schedule) {
+            let score = 0;
+            const am_block = [10, 11];
+            const pm_block = [13, 14, 15, 16];
+            days.forEach(day => {
+                const checkConsecutive = (block) => {
+                    for (let i = 0; i < block.length - 1; i++) {
+                        const hour1 = block[i];
+                        const hour2 = block[i+1];
+                        const worker1 = schedule[day][hour1].mainWorker;
+                        const worker2 = schedule[day][hour2].mainWorker;
+                        if (worker1 && worker1 === worker2) {
+                            score++;
+                        }
+                    }
+                };
+                checkConsecutive(am_block);
+                checkConsecutive(pm_block);
+            });
+            return score;
+        }
+
+        function generateOptimalSchedule() {
+            const memberCount = studentData.length;
+            if (memberCount === 0) { alert('먼저 부원을 1명 이상 추가해주세요.'); return; }
+
+            let bestSchedule = null;
+            let bestWorkCount = null;
+            let bestScore = -1;
+            
+            const SIMULATION_COUNT = 20; 
+
+            for (let i = 0; i < SIMULATION_COUNT; i++) {
+                const { schedule: candidateSchedule, workCount: candidateWorkCount } = generateSingleSchedule();
+                const score = calculateScheduleScore(candidateSchedule);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestSchedule = candidateSchedule;
+                    bestWorkCount = candidateWorkCount;
+                }
+            }
+            
+            renderScheduleTable(bestSchedule, bestWorkCount);
+        }
+
+        function generateSingleSchedule() {
+            const memberCount = studentData.length;
+            const totalWorkSlots = workHours.length * days.length;
+            const baseHours = Math.floor(totalWorkSlots / memberCount);
+            const extraHourMembersCount = totalWorkSlots % memberCount;
+            const workQuotas = {};
+            const shuffledMembers = [...studentData].sort(() => Math.random() - 0.5);
+            shuffledMembers.forEach((member, index) => { workQuotas[member.name] = baseHours + (index < extraHourMembersCount ? 1 : 0); });
+
+            const finalSchedule = {};
+            const allTimeSlots = [];
+            days.forEach(day => {
+                finalSchedule[day] = {};
+                workHours.forEach(hour => {
+                    const availableMembers = studentData.filter(s => !s.schedule.some(c => c.day === day && hour >= c.start && hour < c.end)).map(s => s.name);
+                    finalSchedule[day][hour] = { available: availableMembers, mainWorker: null };
+                    if (availableMembers.length > 0) { allTimeSlots.push({ day, hour }); }
+                });
+            });
+
+            const workCount = studentData.reduce((acc, s) => ({ ...acc, [s.name]: 0 }), {});
+            allTimeSlots.sort(() => Math.random() - 0.5);
+
+            allTimeSlots.forEach(({ day, hour }) => {
+                const slot = finalSchedule[day][hour];
+                if (slot.available.length === 0) return;
+                let bestCandidate = null; let maxScore = -Infinity;
+                slot.available.forEach(member => {
+                    const quota = workQuotas[member]; const currentWork = workCount[member];
+                    if (currentWork >= quota) return;
+                    let score = Math.random();
+                    score += (quota - currentWork) * 100;
+                    const am_block = [10, 11]; const pm_block = [13, 14, 15, 16]; const prevHour = hour - 1;
+                    if ((am_block.includes(hour) && am_block.includes(prevHour)) || (pm_block.includes(hour) && pm_block.includes(prevHour))) {
+                        if (finalSchedule[day][prevHour].mainWorker === member) { score += 50; }
+                    }
+                    if (score > maxScore) { maxScore = score; bestCandidate = member; }
+                });
+                if (bestCandidate) { slot.mainWorker = bestCandidate; workCount[bestCandidate]++; }
+            });
+
+            return { schedule: finalSchedule, workCount };
+        }
+
+
+        // --- EVENT LISTENER INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            renderMemberManagementUI();
+            
+            document.getElementById('add-member-btn').addEventListener('click', () => {
+                const nameInput = document.getElementById('new-member-name'); const name = nameInput.value.trim();
+                if (name && !studentData.some(m => m.name === name)) { studentData.push({ name: name, schedule: [] }); saveData(); renderMemberManagementUI(); nameInput.value = '';
+                } else if (!name) { alert('부원 이름을 입력해주세요.'); } else { alert('이미 존재하는 이름입니다.'); }
+            });
+
+            const managementSection = document.getElementById('management-section');
+            managementSection.addEventListener('click', event => {
+                const target = event.target; const memberCard = target.closest('.member-card'); if (!memberCard) return;
+                const memberIndex = parseInt(memberCard.dataset.memberIndex, 10);
+                if (target.matches('.delete-member-btn')) { showConfirmationModal(`'${studentData[memberIndex].name}' 부원을 정말 삭제하시겠습니까?`, () => { studentData.splice(memberIndex, 1); saveData(); renderMemberManagementUI(); });
+                } else if (target.matches('.delete-class-btn')) { const classIndex = parseInt(target.dataset.classIndex, 10); studentData[memberIndex].schedule.splice(classIndex, 1); saveData(); renderMemberManagementUI();
+                } else if (target.matches('.add-class-btn')) { const form = memberCard.querySelector('.add-class-form'); const day = form.querySelector('.day-select').value; const start = parseInt(form.querySelector('.start-time-select').value); const end = parseInt(form.querySelector('.end-time-select').value); if (start >= end) { alert('종료 시간은 시작 시간보다 늦어야 합니다.'); return; } studentData[memberIndex].schedule.push({ day, start, end }); studentData[memberIndex].schedule.sort((a, b) => days.indexOf(a.day) - days.indexOf(b.day) || a.start - b.start); saveData(); renderMemberManagementUI();
+                } else if (target.closest('.drop-zone')) { memberCard.querySelector('.file-input').click(); }
+            });
+            managementSection.addEventListener('change', event => { if (event.target.matches('.file-input')) { const memberCard = event.target.closest('.member-card'); const memberIndex = parseInt(memberCard.dataset.memberIndex, 10); if (event.target.files.length > 0) { analyzeImageWithGemini(event.target.files[0], memberIndex); } } });
+            managementSection.addEventListener('dragover', event => { event.preventDefault(); const dropZone = event.target.closest('.drop-zone'); if (dropZone) dropZone.classList.add('dragover'); });
+            managementSection.addEventListener('dragleave', event => { const dropZone = event.target.closest('.drop-zone'); if (dropZone) dropZone.classList.remove('dragover'); });
+            managementSection.addEventListener('drop', event => { event.preventDefault(); const dropZone = event.target.closest('.drop-zone'); if (dropZone) { dropZone.classList.remove('dragover'); const memberIndex = parseInt(dropZone.closest('.member-card').dataset.memberIndex, 10); if (event.dataTransfer.files.length > 0) { analyzeImageWithGemini(event.dataTransfer.files[0], memberIndex); } } });
+            
+            document.getElementById('modal-cancel-btn').addEventListener('click', hideConfirmationModal);
+            document.getElementById('modal-confirm-btn').addEventListener('click', () => { if(actionToConfirm) { actionToConfirm(); } hideConfirmationModal(); });
+            document.getElementById('tab-management-btn').addEventListener('click', () => switchTab('management'));
+            document.getElementById('tab-schedule-btn').addEventListener('click', () => switchTab('schedule'));
+            
+            document.getElementById('generate-schedule').addEventListener('click', () => { 
+                generateOptimalSchedule(); 
+                switchTab('schedule');
+            });
+        });
+    </script>
+</body>
+</html>
+
